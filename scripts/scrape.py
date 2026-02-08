@@ -5,18 +5,21 @@ Polidle Data Scraper
 Downloads French politician data and official photos.
 
 Data sources:
-    - Deputies:  nosdeputes.fr API  (JSON)
-    - Senators:  senat.fr list page + data.senat.fr API  (HTML + JSON)
+    - Deputies:  data.assemblee-nationale.fr open data (17th legislature)
+    - Senators:  senat.fr list page + data.senat.fr API
 
 Usage:
     pip install -r requirements.txt
     python scripts/scrape.py
 """
 
+import io
 import json
 import re
 import sys
 import time
+import unicodedata
+import zipfile
 import requests
 from pathlib import Path
 
@@ -27,13 +30,19 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 DATA_DIR = BASE_DIR / "data"
 PHOTOS_DIR = BASE_DIR / "photos"
 
-NOSDEPUTES_API = "https://www.nosdeputes.fr/deputes/json"
+# AN open data – current legislature deputies + organes
+AN_OPENDATA_ZIP = (
+    "https://data.assemblee-nationale.fr/static/openData/repository/17/"
+    "amo/deputes_actifs_mandats_actifs_organes/"
+    "AMO10_deputes_actifs_mandats_actifs_organes.json.zip"
+)
+
+# AN official photos – best available (240×240 square)
+AN_PHOTO_URL = "https://www.assemblee-nationale.fr/dyn/static/tribun/17/photos/carre/{pa_id}.jpg"
+
+# Sénat
 SENAT_LIST_URL = "https://www.senat.fr/senateurs/senatl.html"
 SENAT_DATA_URL = "https://data.senat.fr/data/senateurs/ODSEN_GENERAL.json"
-
-# Official AN photos – best available (240×240), with fallback to old site (150×192)
-AN_PHOTO_CARRE = "https://www.assemblee-nationale.fr/dyn/static/tribun/17/photos/carre/{id_an}.jpg"
-AN_PHOTO_OLD = "https://www2.assemblee-nationale.fr/static/tribun/16/photos/{id_an}.jpg"
 
 SESSION = requests.Session()
 SESSION.headers.update({
@@ -47,7 +56,6 @@ SENAT_GROUP_SIGLE = {
     "Les Indépendants - République et Territoires": "INDEP",
     "Non inscrit": "NI",
     "Non inscrits": "NI",
-    # The rest already use their sigle in the data
 }
 
 # Sénat group sigle → full name
@@ -63,6 +71,7 @@ SENAT_GROUP_NAME = {
     "NI": "Non-inscrits",
 }
 
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -72,8 +81,16 @@ def setup_directories():
         d.mkdir(parents=True, exist_ok=True)
 
 
+def slugify(text):
+    """Convert a name to a URL-friendly slug."""
+    text = unicodedata.normalize("NFD", text)
+    text = text.encode("ascii", "ignore").decode("ascii")
+    text = text.lower()
+    text = re.sub(r"[^a-z0-9]+", "-", text)
+    return text.strip("-")
+
+
 def fetch_json(url, label="data"):
-    """Fetch JSON from *url*. Returns parsed dict or None."""
     print(f"  → Fetching {label}… {url}")
     try:
         resp = SESSION.get(url, timeout=30)
@@ -85,7 +102,6 @@ def fetch_json(url, label="data"):
 
 
 def fetch_html(url, label="page"):
-    """Fetch HTML from *url*. Returns text or None."""
     print(f"  → Fetching {label}… {url}")
     try:
         resp = SESSION.get(url, timeout=30)
@@ -96,72 +112,94 @@ def fetch_html(url, label="page"):
         return None
 
 
-# Deputy group sigle → full name
-DEPUTE_GROUP_NAME = {
-    "RN":    "Rassemblement National",
-    "REN":   "Renaissance",
-    "LFI":   "La France Insoumise",
-    "LR":    "Les Républicains",
-    "MODEM": "Mouvement Démocrate et apparentés",
-    "HOR":   "Horizons et apparentés",
-    "SOC":   "Socialistes et apparentés",
-    "GDR":   "Gauche Démocrate et Républicaine",
-    "LIOT":  "Libertés, Indépendants, Outre-mer et Territoires",
-    "ECO":   "Écologiste et Social",
-    "NI":    "Non-inscrits",
-    "EPR":   "Ensemble pour la République",
-    "UDR":   "Union des Droites pour la République",
-}
+def fetch_zip(url, label="archive"):
+    """Download a zip file and return a ZipFile object, or None on error."""
+    print(f"  → Downloading {label}… {url}")
+    try:
+        resp = SESSION.get(url, timeout=60)
+        resp.raise_for_status()
+        return zipfile.ZipFile(io.BytesIO(resp.content))
+    except (requests.RequestException, zipfile.BadZipFile) as exc:
+        print(f"    ✗ Error: {exc}")
+        return None
 
 
 # ---------------------------------------------------------------------------
-# Deputies (nosdeputes.fr)
+# Deputies (data.assemblee-nationale.fr open data)
 # ---------------------------------------------------------------------------
 
-def parse_deputes(data):
-    if not data:
+def parse_deputes_opendata(zf):
+    """Parse deputies from the AN open data zip file."""
+    if zf is None:
         return []
 
-    items = data.get("deputes", [])
+    # 1. Build organe lookup: organe_uid -> {sigle, nom}
+    organe_map = {}
+    for name in zf.namelist():
+        if name.startswith("json/organe/") and name.endswith(".json"):
+            data = json.loads(zf.read(name))
+            org = data.get("organe", data)
+            if org.get("codeType") == "GP":
+                uid = org.get("uid", "")
+                organe_map[uid] = {
+                    "sigle": org.get("libelleAbrege", ""),
+                    "nom": org.get("libelle", ""),
+                }
+
+    # 2. Parse each deputy
     result = []
-    for item in items:
-        dep = item.get("depute", item)
-        slug = dep.get("slug", "")
-        if not slug:
+    for name in zf.namelist():
+        if not (name.startswith("json/acteur/") and name.endswith(".json")):
             continue
 
-        groupe_sigle = dep.get("groupe_sigle", "")
-        groupe_nom = ""
+        data = json.loads(zf.read(name))
+        act = data.get("acteur", data)
 
-        grp = dep.get("groupe")
-        if isinstance(grp, dict):
-            groupe_nom = grp.get("organisme", "")
-            if not groupe_sigle:
-                groupe_sigle = grp.get("sigle", grp.get("acronyme", ""))
+        # Get PA ID
+        uid_info = act.get("uid", {})
+        pa_id = uid_info.get("#text", "") if isinstance(uid_info, dict) else str(uid_info)
+        if not pa_id:
+            continue
 
-        if not groupe_sigle:
-            groupe_sigle = "NI"
-        if not groupe_nom or groupe_nom == groupe_sigle:
-            groupe_nom = DEPUTE_GROUP_NAME.get(groupe_sigle, groupe_sigle)
+        # Identity
+        ident = act.get("etatCivil", {}).get("ident", {})
+        nom = ident.get("nom", "")
+        prenom = ident.get("prenom", "")
+        nom_complet = f"{prenom} {nom}".strip()
 
-        prenom = dep.get("prenom", "")
-        nom = dep.get("nom_de_famille", dep.get("nom", ""))
-        id_an = dep.get("id_an", "")
+        # Find active 17th legislature group
+        mandats = act.get("mandats", {}).get("mandat", [])
+        if not isinstance(mandats, list):
+            mandats = [mandats]
 
-        # Build list of photo URLs to try (best quality first)
-        photo_urls = []
-        if id_an:
-            photo_urls.append(AN_PHOTO_CARRE.format(id_an=id_an))  # 240×240
-            photo_urls.append(AN_PHOTO_OLD.format(id_an=id_an))    # 150×192 fallback
+        groupe_sigle = "NI"
+        groupe_nom = "Non inscrit"
+        for m in mandats:
+            if not isinstance(m, dict):
+                continue
+            if (m.get("typeOrgane") == "GP"
+                    and m.get("legislature") == "17"
+                    and m.get("dateFin") is None):
+                organe_ref = m.get("organes", {}).get("organeRef", "")
+                if organe_ref in organe_map:
+                    groupe_sigle = organe_map[organe_ref]["sigle"]
+                    groupe_nom = organe_map[organe_ref]["nom"]
+                break
+
+        # Build slug for filename
+        slug = slugify(nom_complet)
+
+        # Photo URL (numeric part of PA ID)
+        pa_num = pa_id.replace("PA", "")
 
         result.append({
             "id": slug,
             "nom": nom,
             "prenom": prenom,
-            "nom_complet": f"{prenom} {nom}".strip() or slug,
+            "nom_complet": nom_complet,
             "groupe_sigle": groupe_sigle,
             "groupe_nom": groupe_nom,
-            "photo_urls": photo_urls,
+            "photo_url": AN_PHOTO_URL.format(pa_id=pa_num),
             "type": "depute",
             "photo": "",
         })
@@ -196,13 +234,11 @@ def parse_senateurs(html_list, json_data):
                 continue
             mat = rec.get("Matricule", "").upper()
             raw_group = rec.get("Groupe_politique", "NI") or "NI"
-            # Normalise to sigle
             sigle = SENAT_GROUP_SIGLE.get(raw_group, raw_group)
             nom = SENAT_GROUP_NAME.get(sigle, raw_group)
             group_by_matricule[mat] = (sigle, nom)
 
     # --- Parse senator links from list page ---
-    # Pattern: <A href="/senateur/{slug}.html">NOM&nbsp;Prénom</A>
     pattern = re.compile(
         r'href="/senateur/([^"]+?)\.html"[^>]*>([^<]+)</[Aa]>',
         re.IGNORECASE,
@@ -213,10 +249,8 @@ def parse_senateurs(html_list, json_data):
         slug = match.group(1).strip()
         raw_name = match.group(2).strip().replace("\xa0", " ").replace("&nbsp;", " ")
 
-        # Extract matricule from slug
         matricule = _extract_matricule(slug).upper()
 
-        # Parse name: "AESCHLIMANN Marie-Do" → nom="AESCHLIMANN", prenom="Marie-Do"
         parts = raw_name.split(None, 1)
         if len(parts) == 2:
             nom_display, prenom = parts
@@ -224,12 +258,9 @@ def parse_senateurs(html_list, json_data):
             nom_display = parts[0] if parts else slug
             prenom = ""
 
-        # Title-case the nom
         nom = nom_display.title()
-        # Fix common title-case issues (e.g., "De" → keep lowercase in some contexts)
         nom_complet = f"{prenom} {nom}".strip()
 
-        # Get group from data.senat.fr
         groupe_sigle, groupe_nom = group_by_matricule.get(matricule, ("NI", "Non-inscrits"))
 
         result.append({
@@ -260,7 +291,6 @@ def download_photo(url, filepath, retries=2):
             resp = SESSION.get(url, timeout=15)
             if resp.status_code == 200 and len(resp.content) > 500:
                 ct = resp.headers.get("content-type", "")
-                # Accept images or binary streams
                 if "image" in ct or "octet" in ct or resp.content[:3] in (b'\xff\xd8\xff', b'\x89PN'):
                     filepath.write_bytes(resp.content)
                     return True
@@ -282,7 +312,6 @@ def download_photos(politicians, subdir):
     for i, pol in enumerate(politicians):
         fp = photo_dir / f"{pol['id']}.jpg"
 
-        # Support multiple URLs (fallback chain) or single URL
         urls = pol.get("photo_urls") or ([pol["photo_url"]] if pol.get("photo_url") else [])
         downloaded = False
         for url in urls:
@@ -342,10 +371,10 @@ def main():
 
     setup_directories()
 
-    # ── Deputies ──────────────────────────────────────────────
-    print("\n🟦 ASSEMBLÉE NATIONALE")
-    dep_data = fetch_json(NOSDEPUTES_API, "deputies")
-    deputes = parse_deputes(dep_data) if dep_data else []
+    # ── Deputies (AN open data) ───────────────────────────────
+    print("\n🟦 ASSEMBLÉE NATIONALE (17e législature)")
+    zf = fetch_zip(AN_OPENDATA_ZIP, "open data archive")
+    deputes = parse_deputes_opendata(zf) if zf else []
     print(f"  Parsed {len(deputes)} deputies")
 
     # ── Senators ──────────────────────────────────────────────

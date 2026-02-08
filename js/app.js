@@ -11,24 +11,26 @@
   // Unknown groups get an auto-generated color.
   // ----------------------------------------------------------
   const PARTY_COLORS = {
-    /* --- Assemblée Nationale --- */
+    /* --- Assemblée Nationale (17e législature) --- */
     "RN":      { name: "Rassemblement National",                           color: "#0D378A" },
-    "REN":     { name: "Renaissance",                                      color: "#7B4FBE" },
-    "LFI":     { name: "La France Insoumise",                              color: "#CC2443" },
-    "LR":      { name: "Les Républicains",                                 color: "#0077CC" },
-    "MODEM":   { name: "Mouvement Démocrate et apparentés",                color: "#FF8C00" },
-    "HOR":     { name: "Horizons et apparentés",                           color: "#00B4D8" },
+    "EPR":     { name: "Ensemble pour la République",                      color: "#7B4FBE" },
+    "LFI-NFP": { name: "La France insoumise – NFP",                       color: "#CC2443" },
+    "DR":      { name: "Droite Républicaine",                              color: "#0077CC" },
+    "Dem":     { name: "Les Démocrates",                                   color: "#FF8C00" },
+    "HOR":     { name: "Horizons & Indépendants",                         color: "#00B4D8" },
     "SOC":     { name: "Socialistes et apparentés",                        color: "#FF6B81" },
     "GDR":     { name: "Gauche Démocrate et Républicaine",                 color: "#BB0000" },
     "LIOT":    { name: "Libertés, Indépendants, Outre-mer et Territoires", color: "#D4A017" },
-    "ECO":     { name: "Écologiste et Social",                             color: "#00A86B" },
-    "NI":      { name: "Non-inscrits",                                     color: "#808080" },
+    "EcoS":    { name: "Écologiste et Social",                             color: "#00A86B" },
+    "UDR":     { name: "Union des droites pour la République",             color: "#1B3A5C" },
+    "NI":      { name: "Non inscrit",                                      color: "#808080" },
 
     /* --- Sénat --- */
+    "LR":      { name: "Les Républicains",                                 color: "#0066AA" },
     "SER":     { name: "Socialiste, Écologiste et Républicain",            color: "#E05080" },
     "UC":      { name: "Union Centriste",                                  color: "#00A0D2" },
     "RDPI":    { name: "Rassemblement des démocrates, progressistes et indépendants", color: "#DAA520" },
-    "CRCE-K":  { name: "Communiste Républicain Citoyen Écologiste – Kanaky", color: "#BB0000" },
+    "CRCE-K":  { name: "Communiste Républicain Citoyen Écologiste – Kanaky", color: "#C40000" },
     "RDSE":    { name: "Rassemblement Démocratique et Social Européen",    color: "#E6A817" },
     "GEST":    { name: "Écologiste – Solidarité et Territoires",           color: "#2ECC71" },
     "INDEP":   { name: "Les Indépendants – République et Territoires",     color: "#8B6914" },
