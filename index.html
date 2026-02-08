@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Polidle — Devine le groupe politique !</title>
+    <meta name="description" content="Polidle : devine le groupe politique des députés et sénateurs français à partir de leur photo officielle.">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🏛️</text></svg>">
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<!-- ============ Loading Screen ============ -->
+<div id="loading" class="loading-screen">
+    <div class="loading-content">
+        <h1>🏛️ POLIDLE</h1>
+        <p>Chargement des données…</p>
+        <div class="spinner"></div>
+    </div>
+</div>
+
+<!-- ============ Error Screen ============ -->
+<div id="error-screen" class="loading-screen hidden">
+    <div class="loading-content">
+        <h1>😕</h1>
+        <p id="error-message">Impossible de charger les données.</p>
+        <p class="hint">Lancez d'abord le scraper :<br><code>python scripts/scrape.py</code></p>
+    </div>
+</div>
+
+<!-- ============ Main App ============ -->
+<div id="app" class="hidden">
+
+    <!-- Header -->
+    <header>
+        <h1 class="logo">🏛️ POLIDLE</h1>
+        <p class="subtitle">Devine le groupe politique !</p>
+    </header>
+
+    <!-- Mode Selector -->
+    <nav id="mode-selector">
+        <button class="mode-btn active" data-mode="both">🏛️ Tous</button>
+        <button class="mode-btn" data-mode="deputes">🔵 Assemblée</button>
+        <button class="mode-btn" data-mode="senateurs">🔴 Sénat</button>
+    </nav>
+
+    <!-- Score Bar -->
+    <div id="score-bar">
+        <div class="stat">
+            <span class="stat-label">Score</span>
+            <span class="stat-value"><span id="score">0</span>/<span id="total">0</span></span>
+        </div>
+        <div class="stat">
+            <span class="stat-label">Série</span>
+            <span class="stat-value">🔥 <span id="streak">0</span></span>
+        </div>
+        <div class="stat">
+            <span class="stat-label">Record</span>
+            <span class="stat-value">⭐ <span id="best-streak">0</span></span>
+        </div>
+    </div>
+
+    <!-- Game Area -->
+    <main id="game-area">
+        <div id="game-layout">
+
+            <!-- Left: Photo + Answer Reveal -->
+            <div id="photo-col">
+                <div id="photo-card">
+                    <span id="chamber-badge"></span>
+                    <img id="politician-photo" src="" alt="Photo du parlementaire" draggable="false" />
+                    <div id="photo-placeholder" class="hidden">
+                        <span class="placeholder-icon">📷</span>
+                        <p>Photo non disponible</p>
+                    </div>
+                </div>
+
+                <!-- Answer Reveal (hidden until answered) -->
+                <div id="answer-reveal" class="hidden">
+                    <p id="reveal-icon"></p>
+                    <p id="reveal-name"></p>
+                    <p id="reveal-group"></p>
+                </div>
+            </div>
+
+            <!-- Right: Party Buttons + Next -->
+            <div id="buttons-col">
+                <div id="party-grid"></div>
+                <button id="next-btn" class="hidden">Suivant →</button>
+            </div>
+
+        </div>
+    </main>
+
+    <!-- Footer -->
+    <footer>
+        <p>
+            Données :
+            <a href="https://www2.assemblee-nationale.fr" target="_blank" rel="noopener">assemblee-nationale.fr</a>,
+            <a href="https://www.nosdeputes.fr" target="_blank" rel="noopener">nosdeputes.fr</a> &amp;
+            <a href="https://data.senat.fr" target="_blank" rel="noopener">data.senat.fr</a>
+        </p>
+    </footer>
+</div>
+
+<script src="js/app.js"></script>
+</body>
+</html>
