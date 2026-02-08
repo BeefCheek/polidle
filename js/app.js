@@ -91,8 +91,8 @@
           return r.json();
         }),
       ]);
-      deputes = depRes || [];
-      senateurs = senRes || [];
+      deputes = (depRes || []).filter((p) => p.photo);
+      senateurs = (senRes || []).filter((p) => p.photo);
     } catch (err) {
       console.error("Data load error:", err);
       // Try loading individually – one may succeed
@@ -183,15 +183,18 @@
     answered = false;
     const pol = pool[currentIndex];
 
-    // Photo
+    // Photo — if it fails to load, skip to next politician
     els.photo.style.display = "block";
     els.photoPlaceholder.classList.add("hidden");
-    els.photo.src = pol.photo;
     els.photo.alt = "?";
     els.photo.onerror = function () {
-      this.style.display = "none";
-      els.photoPlaceholder.classList.remove("hidden");
+      // Remove this politician from the pool so they never appear again
+      pool.splice(currentIndex, 1);
+      if (pool.length === 0) return;
+      if (currentIndex >= pool.length) currentIndex = 0;
+      nextPolitician();
     };
+    els.photo.src = pol.photo;
 
     // Chamber badge
     if (mode === "both") {
